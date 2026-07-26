@@ -1,6 +1,6 @@
 # Multimodal Korean QA System
 
-A multimodal LLM-based question-answering system for Korean
+A multimodal LLM-based question-answering system for Korean.
 
 ---
 
