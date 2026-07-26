@@ -1,89 +1,124 @@
-# Multimodal Korean QA
+# Multimodal Korean QA System
 
-## About
-Research on a multimodal, LLM-based Korean question-answering system —
-originally a 3-person team project (university, web frontend). This
-repository is an individual reimplementation of the **data preprocessing
-and modeling** portion I was responsible for. Code owned by teammates
-(e.g. the web frontend) is not included here.
+A multimodal LLM-based question-answering system for Korean
+
+---
+
+## Project Overview
+
+**Multimodal Korean QA System** is a question-answering system that takes
+an image and a Korean-language question together as input and generates a
+natural Korean answer.
+
+When a user submits an image (a document, a table, a photo, a screenshot,
+etc.) along with a Korean question, the model interprets the visual content
+of the image together with the text of the question to produce an answer.
+The project targets the specific gap of "Korean questions about images,"
+which plain text-only QA cannot handle, and includes an evaluation
+pipeline to measure answer quality quantitatively.
+
+## Purpose
+
+- **Validate multimodal QA capability in Korean**: Most multimodal LLM
+  ecosystems are English-centric; this project builds a QA pipeline
+  specifically for Korean input and output.
+- **Build model application and evaluation skills**: Apply a pretrained
+  multimodal model to a real task — with or without lightweight
+  fine-tuning — and go through the full cycle of quantitative evaluation.
+- **Explore practical applicability**: Prototype use cases such as document
+  understanding or image-based customer inquiry response that could scale
+  to a real service.
+- **Portfolio purpose**: Demonstrate LLM/VLM modeling, inference pipeline
+  design, and evaluation framework skills through a self-directed project.
 
 ## My Role
-- Preprocessing of QA data for training/evaluation (text-image pair cleaning, format normalization)
-- Design and implementation of the multimodal (text + image) QA model
-- Development of the model evaluation pipeline (Exact Match, character-level F1)
 
-## Overview
-A research codebase for a multimodal (text + image) LLM-based Korean QA
-system. Visual information is summarized with a CLIP-style image
-encoder and injected as a prompt into a Korean generation model (causal
-LM) — a vision-to-prompt approach. Beyond modeling, the **evaluation
-pipeline (EM / character-level F1)** is kept as a separate module so
-different backbones can be swapped in and compared.
+This was a project with a team of 4 or more. My role was **preprocessing
+and encoders**:
+- Implementing image preprocessing (resizing/normalization) and Korean
+  text tokenization
+- Designing and training the vision encoder from scratch, using a
+  CNN/ViT-based architecture to extract image features for this task
+- Designing and training the text encoder from scratch, using an
+  LSTM-based architecture to embed Korean questions, built around a
+  Korean tokenizer
+- Handing off the trained encoder representations to the teammates
+  responsible for fusion, decoding, and evaluation
+
+## Challenges & Solutions
+
+| Challenge | Solution |
+|---|---|
+| Korean tokenization behaves differently from English (no whitespace-based word boundaries, agglutinative morphology), which hurt downstream embedding quality when following English-first tokenizer conventions | Built a tokenizer trained on Korean corpora and validated segmentation on sample questions before feeding it into the text encoder |
+| No off-the-shelf model was suited to the specific image types (documents, screenshots, not just natural photos), so training a CNN/ViT-based vision encoder from scratch meant starting without strong priors | Trained on a curated dataset spanning document/screenshot/photo inputs and iterated between CNN and ViT-style layers based on feature quality checks, rather than assuming a generic image-classification setup would transfer |
+| Training an LSTM-based text encoder for Korean from scratch risked producing embeddings that didn't separate distinct questions well | Evaluated embedding quality directly (e.g. checking that semantically different questions produced clearly separated embeddings) rather than relying on training loss alone |
+| Coordinating output dimensions and formats with the teammates building the fusion layer, since both encoders were being trained in parallel with the downstream fusion work | Agreed on embedding dimensions and normalization conventions with the team up front, and iterated with them early rather than discovering a mismatch after training was complete |
+
+## Architecture
+
+```
+   Image input                    Korean question
+ (doc / photo / screenshot)          (text query)
+        │                                  │
+        ▼                                  ▼
+  Vision encoder                     Text encoder
+ (image feature extraction)   (Korean tokenizer + embedding)
+        │                                  │
+        └───────────────┬──────────────────┘
+                         ▼
+                Cross-modal fusion
+         (aligns image and text vectors)
+                         │
+                         ▼
+                    LLM decoder
+           (generates the Korean answer)
+                         │
+                         ▼
+                Evaluation pipeline
+        (accuracy / similarity vs. reference answers)
+```
+
+**Modules**
+1. **Preprocessing**: Handles image preprocessing and Korean text
+   tokenization as a unified data pipeline, feeding both encoders below.
+2. **Multimodal encoder**: A vision encoder and a text encoder produce
+   separate vectors, which the cross-modal fusion layer then combines.
+3. **LLM decoder**: Generates a natural Korean-language answer from the
+   fused multimodal representation.
+4. **Evaluation pipeline**: Compares generated answers against reference
+   answers, computes quantitative metrics (accuracy, similarity), and logs
+   the results for analysis.
+
+**What I owned in this architecture**
+
+This was a project with a team of 4 or more. My part was preprocessing
+and the encoders — the first two stages below.
+
+| Module | Owner |
+|---|---|
+| Preprocessing | Me — implemented image preprocessing and integrated a Korean-specific tokenizer in place of default English-first tokenization |
+| Vision encoder | Me — designed and trained a CNN/ViT-based model from scratch to extract image features for this task |
+| Text encoder | Me — designed and trained an LSTM-based model from scratch to embed Korean questions, built on the Korean tokenizer |
+| Cross-modal fusion | Teammate |
+| LLM decoder | Teammate |
+| Evaluation pipeline | Teammate |
+
+## Key Features
+
+| Feature | Description |
+|---|---|
+| Multimodal input handling | Accepts an image and a Korean-language question together |
+| Korean answer generation | Output optimized for natural Korean language generation |
+| Performance evaluation pipeline | Includes scripts to quantitatively measure answer accuracy/quality |
+| Result logging | Stores input-output-evaluation results for later analysis |
 
 ## Tech Stack
-
-**Team project overall**
-| Area | Tech |
-|---|---|
-| Frontend | Web (teammate's part) |
-| Modeling/preprocessing (my part) | Python, PyTorch, HuggingFace Transformers, CLIP |
-
-**This repository (my preprocessing/modeling, reimplemented)**
-- Python, PyTorch, HuggingFace Transformers
-- CLIP (image encoding), Korean causal LM (text generation)
-- Pillow (image loading), pytest
-
-## Structure
-```
-src/
-  preprocess.py # Cleaning/normalization/deduplication of raw QA records
-  data.py       # Multimodal/text-only QA dataset loader (PyTorch Dataset)
-  model.py      # BaseKoreanQAModel interface + HF backbone + offline DummyModel
-  evaluate.py   # Exact Match / character-level F1 metrics
-  train.py      # Fine-tuning loop skeleton
-scripts/
-  run_evaluation.py   # CLI evaluation script
-sample_data/
-  sample_qa.json      # 5 example Korean QA items (2 text-only / 3 multimodal)
-tests/
-  test_preprocess.py   # Unit tests for the preprocessing module
-  test_evaluate.py    # Unit tests for evaluation metrics
-  test_pipeline.py     # End-to-end test from data loading to evaluation
-```
-
-## Evaluation Metrics
-Since Korean word segmentation via a morphological analyzer adds
-complexity, the following two metrics are used for stable comparison
-without that dependency:
-- **Exact Match (EM)**: exact match after whitespace/punctuation normalization
-- **Character-level F1**: harmonic mean of precision/recall over character sets between prediction and gold answer
+- **Language**: Python
+- **Framework**: PyTorch
+- **Model**: CNN/ViT-based vision encoder and LSTM-based text encoder designed and trained from scratch by me; fusion layer and Korean-capable decoder built by teammates
 
 ## Running
 ```bash
 pip install -r requirements.txt
-
-# Validate the pipeline offline/as a smoke test with the dummy model
-python scripts/run_evaluation.py --data sample_data/sample_qa.json --dummy
-
-# Evaluate with the real HF backbone (requires downloading model weights)
-python scripts/run_evaluation.py --data sample_data/sample_qa.json
+python main.py
 ```
-
-## Tests
-```bash
-pytest
-```
-
-## Design Notes
-- `BaseKoreanQAModel` is defined as an interface so other multimodal
-  backbones (BLIP-2, Qwen-VL, etc.) can easily replace the CLIP+KoAlpaca combo.
-- `DummyKoreanQAModel` exists to validate the evaluation pipeline itself
-  in network-restricted CI environments.
-- The current image captioning is a minimal implementation comparing
-  CLIP similarity against candidate labels; a dedicated captioning
-  model such as BLIP is recommended for production use.
-
-## Future Improvements
-- Fine-tune and benchmark on a real Korean multimodal QA dataset (e.g. KVQA-Ko)
-- Add semantic metrics such as KoBERTScore alongside character-level F1
-- Support lightweight fine-tuning via LoRA
